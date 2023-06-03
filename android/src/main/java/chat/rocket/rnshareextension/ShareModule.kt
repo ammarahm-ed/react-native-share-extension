@@ -9,10 +9,13 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Parcelable
+import android.provider.OpenableColumns
+import android.webkit.MimeTypeMap
 import com.facebook.react.bridge.*
 import java.io.File
 
-class ShareModule(reactContext: ReactApplicationContext?) : ReactContextBaseJavaModule(reactContext) {
+class ShareModule(reactContext: ReactApplicationContext?) :
+    ReactContextBaseJavaModule(reactContext) {
 
     override fun getName() = "ReactNativeShareExtension"
 
@@ -30,9 +33,16 @@ class ShareModule(reactContext: ReactApplicationContext?) : ReactContextBaseJava
         val intent = activity.intent
 
         val result = when {
-            intent.action == ACTION_SEND && intent.isTypeOf("text/plain") -> actionSendText(intent)
-            intent.action == ACTION_SEND && intent.isTypeOf("image/") -> actionSendImage(intent, currentActivity)
-            intent.action == ACTION_SEND_MULTIPLE && intent.isTypeOf("image/") -> actionSendMultiple(intent, currentActivity)
+            intent.action == ACTION_SEND && intent.isTypeOf("text/plain") -> actionSendText(
+                intent,
+                activity
+            )
+            intent.action == "android.intent.action.PROCESS_TEXT" -> actionSendText(
+                intent,
+                activity
+            )
+            intent.action == ACTION_SEND -> actionSendFile(intent, currentActivity)
+            intent.action == ACTION_SEND_MULTIPLE -> actionSendMultiple(intent, currentActivity)
             else -> emptyList()
         }
 
@@ -44,56 +54,82 @@ class ShareModule(reactContext: ReactApplicationContext?) : ReactContextBaseJava
     }
 
     private fun actionSendMultiple(intent: Intent, activity: Activity): List<WritableMap> {
-
         val uris = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) as? List<Uri>
-                ?: emptyList()
+            ?: emptyList()
 
         return uris.mapNotNull {
-            createImageFilePathArgumentsMap(it, activity)
+            createFilePathArgumentsMap(it, activity)
         }
     }
 
-    private fun actionSendImage(intent: Intent, activity: Activity): List<WritableMap> {
+    private fun actionSendFile(intent: Intent, activity: Activity): List<WritableMap> {
 
         val uri = intent.getParcelableExtra<Parcelable>(Intent.EXTRA_STREAM) as? Uri
+            ?: return emptyList()
+
+
+        return createFilePathArgumentsMap(uri, activity)?.let { listOf(it) } ?: emptyList()
+    }
+
+    private fun actionSendText(intent: Intent, activity: Activity): List<WritableMap> {
+        val uri = intent.getParcelableExtra<Parcelable>(Intent.EXTRA_STREAM) as? Uri
+        if (uri != null) {
+            return createFilePathArgumentsMap(uri, activity)?.let { listOf(it) } ?: emptyList()
+        } else if (intent.action === "android.intent.action.PROCESS_TEXT") {
+            return intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)
+                ?.let { listOf(it.createMap("text")) }
                 ?: return emptyList()
-
-        return createImageFilePathArgumentsMap(uri, activity)?.let { listOf(it) } ?: emptyList()
-    }
-
-    private fun actionSendText(intent: Intent): List<WritableMap> {
-
-        return intent.getStringExtra(Intent.EXTRA_TEXT)?.let { listOf(it.createMap("text")) }
+        } else {
+            return intent.getStringExtra(Intent.EXTRA_TEXT)?.let { listOf(it.createMap("text")) }
                 ?: return emptyList()
-    }
-
-    private fun createImageFilePathArgumentsMap(uri: Uri, activity: Activity): WritableMap? {
-
-        return runCatching { createPrivateCopy(activity, uri) }
-                .getOrDefault(null)
-                ?.createMap("media")
-    }
-
-    private fun storeImage(cacheDir: File, bitmap: Bitmap): String {
-
-        return File(cacheDir, "share-${System.currentTimeMillis()}.jpg").apply {
-            writeBitmap(bitmap, Bitmap.CompressFormat.JPEG, 85)
-        }.absolutePath
-    }
-
-    private fun createPrivateCopy(context: Context, uri: Uri): String? {
-
-        return context.contentResolver.openInputStream(uri).use {
-            val bitmap = BitmapFactory.decodeStream(it)
-            storeImage(context.cacheDir, bitmap)
         }
-    }
-}
 
-private fun File.writeBitmap(bitmap: Bitmap, format: Bitmap.CompressFormat, quality: Int) {
-    outputStream().use { out ->
-        bitmap.compress(format, quality, out)
-        out.flush()
+
+    }
+
+    private fun createFilePathArgumentsMap(uri: Uri, activity: Activity): WritableMap? {
+        val map = Arguments.createMap();
+        val type = activity.contentResolver.getType(uri);
+
+        val (fileName, size) = activity.contentResolver.query(uri, null, null, null, null)
+            .use { cursor ->
+                if (cursor != null) {
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+
+                    cursor.moveToFirst()
+                    Pair(cursor.getString(nameIndex), cursor.getLong(sizeIndex));
+                } else {
+                    Pair("share-${System.currentTimeMillis()}.bin", 0L)
+                }
+            }
+
+        val filePath = runCatching { createPrivateCopy(activity, type, uri) }
+            .getOrDefault(null);
+        map.putString("type", type);
+        map.putString("value", filePath);
+        map.putString("name", fileName);
+        map.putDouble("size", size.toDouble())
+        return map;
+    }
+
+
+    private fun createPrivateCopy(context: Context, type: String?, uri: Uri): String? {
+        return context.contentResolver.openInputStream(uri).use {
+
+            val file = File(
+                context.cacheDir,
+                "share-${System.currentTimeMillis()}.${
+                    MimeTypeMap.getSingleton().getExtensionFromMimeType(type)
+                }"
+            );
+            file.outputStream().use { out ->
+                it?.copyTo(out, 16 * 1024);
+                it?.close();
+                out.close();
+                file.absolutePath
+            }
+        }
     }
 }
 
