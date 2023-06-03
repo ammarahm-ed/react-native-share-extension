@@ -6,8 +6,17 @@
 #endif
 
 #import "ReactNativeShareExtension.h"
+#import <React/RCTConvert.h>
+#import <React/RCTUtils.h>
 
 NSExtensionContext* extensionContext;
+
+static NSString *const FIELD_URI = @"value";
+static NSString *const FIELD_FILE_COPY_URI = @"fileCopyUri";
+static NSString *const FIELD_COPY_ERR = @"copyError";
+static NSString *const FIELD_NAME = @"name";
+static NSString *const FIELD_TYPE = @"type";
+static NSString *const FIELD_SIZE = @"size";
 
 @implementation ReactNativeShareExtension
 
@@ -49,7 +58,6 @@ RCT_EXPORT_METHOD(close)
 {
     [extensionContext completeRequestReturningItems:nil
                                   completionHandler:nil];
-    exit(0);
 }
 
 RCT_REMAP_METHOD(data, resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
@@ -57,6 +65,86 @@ RCT_REMAP_METHOD(data, resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPro
     [self extractDataFromContext:extensionContext withCallback:^(NSArray* items, NSException* err) {
         resolve(items);
     }];
+}
+
++ (NSURL *)copyToUniqueDestinationFrom:(NSURL *)url usingDestinationPreset:(NSString *)copyToDirectory error:(NSError *)error
+{
+    NSURL *destinationRootDir = [self getDirectoryForFileCopy];
+    // we don't want to rename the file so we put it into a unique location
+    NSString *uniqueSubDirName = [[NSUUID UUID] UUIDString];
+    NSURL *destinationDir = [destinationRootDir URLByAppendingPathComponent:[NSString stringWithFormat:@"%@/", uniqueSubDirName]];
+    NSURL *destinationUrl = [destinationDir URLByAppendingPathComponent:[NSString stringWithFormat:@"%@", url.lastPathComponent]];
+
+    [NSFileManager.defaultManager createDirectoryAtURL:destinationDir withIntermediateDirectories:YES attributes:nil error:&error];
+    if (error) {
+        return url;
+    }
+    [NSFileManager.defaultManager copyItemAtURL:url toURL:destinationUrl error:&error];
+    if (error) {
+        return url;
+    } else {
+        return destinationUrl;
+    }
+}
+
++ (NSURL *)getDirectoryForFileCopy
+{
+   return [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:@"group.org.streetwriters.notesnook"];
+}
+
+- (NSMutableDictionary *)getMetadataForUrl:(NSURL *)url error:(NSError **)error
+{
+    __block NSMutableDictionary *result = [NSMutableDictionary dictionary];
+
+    NSFileCoordinator *coordinator = [NSFileCoordinator new];
+    NSError *fileError;
+
+    // TODO double check this implemenation, see eg. https://developer.apple.com/documentation/foundation/nsfilecoordinator/1412420-prepareforreadingitemsaturls
+    [coordinator coordinateReadingItemAtURL:url options:NSFileCoordinatorReadingResolvesSymbolicLink error:&fileError byAccessor:^(NSURL *newURL) {
+        // If the coordinated operation fails, then the accessor block never runs
+     
+        NSError *copyError;
+        NSString *maybeFileCopyPath = [ReactNativeShareExtension copyToUniqueDestinationFrom:newURL usingDestinationPreset:@"cachesDirectory" error:copyError].absoluteString;
+        
+        if (!copyError) {
+            result[FIELD_URI] = RCTNullIfNil(maybeFileCopyPath);
+        } else {
+            result[FIELD_COPY_ERR] = copyError.localizedDescription;
+            result[FIELD_URI] = [NSNull null];
+        }
+
+        result[FIELD_NAME] = newURL.lastPathComponent;
+
+        NSError *attributesError = nil;
+        NSDictionary *fileAttributes = [NSFileManager.defaultManager attributesOfItemAtPath:newURL.path error:&attributesError];
+        if(!attributesError) {
+            result[FIELD_SIZE] = fileAttributes[NSFileSize];
+        } else {
+            result[FIELD_SIZE] = [NSNull null];
+            NSLog(@"ReactNativeShareExtension: %@", attributesError);
+        }
+
+        if (newURL.pathExtension != nil) {
+            CFStringRef extension = (__bridge CFStringRef) newURL.pathExtension;
+            CFStringRef uti = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, extension, NULL);
+            CFStringRef mimeType = UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType);
+            if (uti) {
+                CFRelease(uti);
+            }
+
+            NSString *mimeTypeString = (__bridge_transfer NSString *)mimeType;
+            result[FIELD_TYPE] = mimeTypeString;
+        } else {
+            result[FIELD_TYPE] = [NSNull null];
+        }
+    }];
+
+    if (fileError) {
+        *error = fileError;
+        return nil;
+    } else {
+        return result;
+    }
 }
 
 - (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSArray *items, NSException *exception))callback
@@ -77,14 +165,20 @@ RCT_REMAP_METHOD(data, resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPro
 
                 NSString *string;
                 NSString *type;
-
+                
                 // is an URL - Can be a path or Web URL
                 if ([(NSObject *)item isKindOfClass:[NSURL class]]) {
                     NSURL *url = (NSURL *) item;
                     string = [url absoluteString];
-                    type = ([[string pathExtension] isEqualToString:@""]) || [url.scheme containsString:@"http"] ? @"text" : @"media";
-
-                    [data addObject:@{ @"value": string, @"type": type }];
+                    
+                    if (([[string pathExtension] isEqualToString:@""]) || [url.scheme containsString:@"http"]) {
+                        type = @"text";
+                        [data addObject:@{ @"value": string, @"type": type }];
+                    } else {
+                        NSError *error;
+                        NSMutableDictionary *fileInfo = [self getMetadataForUrl:url error:&error];
+                        [data addObject:fileInfo];
+                    }
                 
                 // is a String
                 } else if ([(NSObject *)item isKindOfClass:[NSString class]]) {
@@ -96,7 +190,11 @@ RCT_REMAP_METHOD(data, resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPro
                 // is an Image
                 } else if ([(NSObject *)item isKindOfClass:[UIImage class]]) {
                     UIImage *sharedImage = (UIImage *)item;
-                    NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:@"image.png"];
+                    
+                    NSString *fileName =  [[@"share-" stringByAppendingString:[NSNumber numberWithDouble:NSDate.date.timeIntervalSince1970].stringValue]  stringByAppendingString:@".png"];
+                    
+                    NSString *path = [[ReactNativeShareExtension getDirectoryForFileCopy].absoluteString stringByAppendingPathComponent:fileName];
+                    
                     [UIImagePNGRepresentation(sharedImage) writeToFile:path atomically:YES];
                     string = [NSString stringWithFormat:@"%@%@", @"file://", path];
                     type = @"media";
