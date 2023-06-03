@@ -89,7 +89,7 @@ RCT_REMAP_METHOD(data, resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPro
 
 + (NSURL *)getDirectoryForFileCopy
 {
-   return [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:@"group.org.streetwriters.notesnook"];
+   return [NSFileManager.defaultManager containerURLForSecurityApplicationGroupIdentifier:[[NSBundle mainBundle].infoDictionary valueForKey:@"appGroupId"]];
 }
 
 - (NSMutableDictionary *)getMetadataForUrl:(NSURL *)url error:(NSError **)error
