@@ -18,13 +18,13 @@ Fork from: [RocketChat/rn-extensions-share](https://github.com/RocketChat/rn-ext
 Installation should be very easy by just installing it from npm.
 
 ```js
-npm install rn-extensions-share --save
+npm install @ammarahmed/react-native-share-extension --save
 ```
 
 or
 
 ```js
-yarn add rn-extensions-share
+yarn add @ammarahmed/react-native-share-extension
 ```
 
 # Setup
