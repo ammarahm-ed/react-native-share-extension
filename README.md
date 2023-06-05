@@ -122,6 +122,8 @@ The setup requires a little bit more work. I will try to describe as detail as p
     <img src ="https://raw.githubusercontent.com/alinz/react-native-share-extension/master/assets/ios_step_15.png" />
 </p>
 
+- Go to the Capabilities tab and switch on the App Groups switch for both App project & Share Exension. Add a new group and name it as you want. For example group.YOUR_HOST_APP_BUNDLE_IDENTIFIER in my case group.org.streetwriters.notesnook. Edit `Info.plist` of your App project & Share Extension and add a new property with name `appGroupId` and set it's value to the group name you have set earlier. This will ensure that the files you share to the Share Extension are readable by both the app & the share extension.
+
 - Now go back to your extension file (in my case `MyShareEx.m`) and paste the following code there **being sure to substitute `MyShareEx` in all three places for whatever you chose above**
 
 > If your project entry is `index.js` instead of `index.ios.js` then needs to replace `@"index.ios"` with `@"index"`
