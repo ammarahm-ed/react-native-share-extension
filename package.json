@@ -1,6 +1,6 @@
 {
   "name": "@ammarahmed/react-native-share-extension",
-  "version": "2.5.3",
+  "version": "2.5.4",
   "description": "Share-Extension using react-native for both ios and android",
   "main": "lib/index.js",
   "scripts": {
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/RocketChat/rn-extensions-share"
+    "url": "https://github.com/ammarahm-ed/react-native-share-extension"
   },
   "keywords": [
     "react-component",
@@ -22,9 +22,9 @@
   },
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/RocketChat/rn-extensions-share"
+    "url": "https://github.com/ammarahm-ed/react-native-share-extension/issues"
   },
-  "homepage": "https://github.com/RocketChat/rn-extensions-share",
+  "homepage": "https://github.com/ammarahm-ed/react-native-share-extension",
   "dependencies": {
     "react-native": "^0.63.1"
   }
