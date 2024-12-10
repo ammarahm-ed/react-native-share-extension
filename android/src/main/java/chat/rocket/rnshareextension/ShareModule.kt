@@ -50,6 +50,19 @@ class ShareModule(reactContext: ReactApplicationContext?) :
             items.pushMap(it)
         }
 
+        if (intent.extras != null) {
+            val extras = Arguments.createMap();
+            val keys = intent.extras!!.keySet();
+            for (key in keys) {
+                if (key.contains("SUBJECT") || key.contains("TITLE") || key.contains("TEXT")) {
+                    extras.putString(key, intent.extras!!.getString(key));
+                }
+            }
+
+            extras.putString("type", "extras");
+            items.pushMap(extras);
+        }
+
         return items
     }
 
