@@ -347,6 +347,8 @@ RCT_REMAP_METHOD(data, resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPro
                 // is an Image
 
                 } else if ([(NSObject *)item isKindOfClass:[UIImage class]]) {
+                    
+                    NSMutableDictionary *result = [NSMutableDictionary dictionary];
 
                     UIImage *sharedImage = (UIImage *)item;
 
@@ -356,18 +358,62 @@ RCT_REMAP_METHOD(data, resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPro
 
                     
 
-                    NSString *path = [[ReactNativeShareExtension getDirectoryForFileCopy].absoluteString stringByAppendingPathComponent:fileName];
+                    NSString *path = [[ReactNativeShareExtension getDirectoryForFileCopy].path stringByAppendingPathComponent:fileName];
 
-                    
-
+    
                     [UIImagePNGRepresentation(sharedImage) writeToFile:path atomically:YES];
 
                     string = [NSString stringWithFormat:@"%@%@", @"file://", path];
+                    
+                    
+                    result[@"value"] = string;
+                    
+                    
+                    NSError *attributesError = nil;
 
-                    type = @"media";
+                    NSDictionary *fileAttributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:&attributesError];
+                    
+                    
+                    if(!attributesError) {
+
+                        result[FIELD_SIZE] = fileAttributes[NSFileSize];
+
+                    } else {
+
+                        result[FIELD_SIZE] = [NSNull null];
+
+                        NSLog(@"ReactNativeShareExtension: %@", attributesError);
+
+                    }
+                    
+                    NSURL* url = [NSURL URLWithString:path];
+
+                    if (url.pathExtension != nil) {
+
+                        CFStringRef extension = (__bridge CFStringRef) url.pathExtension;
+
+                        CFStringRef uti = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, extension, NULL);
+
+                        CFStringRef mimeType = UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType);
+
+                        if (uti) {
+
+                            CFRelease(uti);
+
+                        }
 
 
-                    [data addObject:@{ @"value": string, @"type": type }];
+                        NSString *mimeTypeString = (__bridge_transfer NSString *)mimeType;
+
+                        result[FIELD_TYPE] = mimeTypeString;
+
+                    } else {
+
+                        result[FIELD_TYPE] = [NSNull null];
+
+                    }
+                    
+                    [data addObject:result];
 
                 }
 
