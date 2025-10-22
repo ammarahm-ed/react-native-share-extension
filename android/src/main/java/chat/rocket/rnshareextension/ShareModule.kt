@@ -20,10 +20,10 @@ class ShareModule(reactContext: ReactApplicationContext?) :
     override fun getName() = "ReactNativeShareExtension"
 
     @ReactMethod
-    fun close() = currentActivity?.finish()
+    fun close() = reactApplicationContext.currentActivity?.finish()
 
     @ReactMethod
-    fun data(promise: Promise) = promise.resolve(processIntent(currentActivity))
+    fun data(promise: Promise) = promise.resolve(processIntent(reactApplicationContext.currentActivity))
 
     private fun processIntent(activity: Activity?): WritableArray {
 
