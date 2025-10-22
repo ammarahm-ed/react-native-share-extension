@@ -1,6 +1,6 @@
 {
   "name": "@ammarahmed/react-native-share-extension",
-  "version": "2.7.0",
+  "version": "2.9.3",
   "description": "Share-Extension using react-native for both ios and android",
   "main": "lib/index.js",
   "types": "index.d.ts",

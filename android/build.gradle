@@ -20,7 +20,6 @@ android {
 }
 
 repositories {
-  jcenter()
   google()
   maven {
     // All of React Native (JS, Android binaries) is installed from npm
